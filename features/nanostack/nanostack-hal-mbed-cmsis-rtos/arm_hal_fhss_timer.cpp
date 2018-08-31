@@ -18,6 +18,7 @@
 #include "fhss_config.h"
 #include "mbed.h"
 #include "mbed_trace.h"
+#include "platform/arm_hal_interrupt.h"
 #include <Timer.h>
 
 #define TRACE_GROUP "fhdr"
@@ -79,6 +80,7 @@ static void fhss_timeout_handler(void)
 
 static void timer_callback(void)
 {
+    platform_enter_critical();
 #if MBED_CONF_NANOSTACK_HAL_CRITICAL_SECTION_USABLE_FROM_INTERRUPT
     // Callback is interrupt safe so it can be called directly without
     // bouncing via event queue thread.
@@ -86,11 +88,13 @@ static void timer_callback(void)
 #else
     equeue->call(fhss_timeout_handler);
 #endif
+    platform_exit_critical();
 }
 
 static int platform_fhss_timer_start(uint32_t slots, void (*callback)(const fhss_api_t *api, uint16_t), const fhss_api_t *callback_param)
 {
     int ret_val = -1;
+    platform_enter_critical();
     if (timer_initialized == false) {
 #if !MBED_CONF_NANOSTACK_HAL_CRITICAL_SECTION_USABLE_FROM_INTERRUPT
         equeue = mbed_highprio_event_queue();
@@ -110,6 +114,7 @@ static int platform_fhss_timer_start(uint32_t slots, void (*callback)(const fhss
     fhss_tim->timeout.attach_us(timer_callback, slots);
     fhss_active_handle = callback_param;
     ret_val = 0;
+    platform_exit_critical();
     return ret_val;
 }
 
@@ -125,10 +130,13 @@ static int platform_fhss_timer_stop(void (*callback)(const fhss_api_t *api, uint
 
 static uint32_t platform_fhss_get_remaining_slots(void (*callback)(const fhss_api_t *api, uint16_t), const fhss_api_t *api)
 {
+    platform_enter_critical();
     fhss_timeout_s *fhss_tim = find_timeout(callback);
     if (!fhss_tim) {
+        platform_exit_critical();
         return 0;
     }
+    platform_exit_critical();
     return fhss_tim->stop_time - read_current_time();
 }
 
